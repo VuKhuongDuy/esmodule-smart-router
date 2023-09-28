@@ -7,6 +7,7 @@ import {
 import { configDotenv } from "dotenv";
 import Web3 from "web3";
 import { IMarket } from "../interfaces/IMarket";
+import { IDydxMarket } from "../../interfaces";
 
 configDotenv()
 
@@ -22,20 +23,17 @@ export const initClient = () => {
     dydxClient = new DydxClient(HTTP_HOST, { web3: web3 });
 }
 
-export const getFundingRate = async () => {
+export const getMarket = async (pair: string): Promise<IDydxMarket> => {
     const markets: { markets: MarketsResponseObject } = await dydxClient.public.getMarkets();
     const pairs = Object.keys(markets.markets)
-    const result: IMarket[] = [];
-    pairs.forEach(pair => {
-        const elem = markets.markets[pair]
-        result.push({
-            pair: elem.market,
-            status: elem.status,
-            fundingRate: elem.nextFundingRate
-        })
-    });
-
-    return result;
+    // const result: IMarket[] = [];
+    const result = pairs.filter(m => markets.markets[m].market === pair)
+    console.log({result})
+    return {
+        pair: markets.markets[result[0]].market,
+        status: markets.markets[result[0]].status,
+        fundingRate: markets.markets[result[0]].nextFundingRate
+    }
 }
 
 // markets: {
