@@ -1,14 +1,24 @@
 {
   "compilerOptions": {
-    "target": "es5",                          
-    "module": "commonjs",                    
-    "lib": ["es6"],                     
-    "allowJs": true,
-    "outDir": "build",                          
+    "target": "es6",                          
+    "module": "ESNext",                    
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],            
+    "skipLibCheck": true,
+    "allowJs": false,
+    "outDir": "dist",                          
     "rootDir": "src",
-    "strict": true,         
-    "noImplicitAny": true,
+    "strict": true,
     "esModuleInterop": true,
-    "resolveJsonModule": true
-  }
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "incremental": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "next.config.js"
+  ],
+  "types": ["node", "jest", "@testing-library/jest-dom"],
+	"exclude": ["node_modules"],
 }
