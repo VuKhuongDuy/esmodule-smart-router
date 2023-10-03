@@ -8,31 +8,63 @@ import { configDotenv } from "dotenv";
 import Web3 from "web3";
 import { IMarket } from "../interfaces/IMarket";
 import { IDydxMarket } from "../../interfaces";
+import { DYDX_WALLET } from "../../constants/constants.js";
 
 configDotenv()
 
-let dydxClient: DydxClient
+export class dydxSDK {
+    public client: DydxClient
 
-export const initClient = () => {
-    const HTTP_HOST = process.env.HOST_DYDX || "https://api.dydx.exchange";
-    const WS_HOST = "wss://api.dydx.exchange/v3/ws";
+    constructor() {
+        const env = process.env.ENV || 'TEST'
+        const HTTP_HOST = env === 'TEST' ? 'https://api.stage.dydx.exchange' : process.env.DYDX_API || "https://api.dydx.exchange";
+        const web3 = new Web3();
+        web3.eth.accounts.wallet.add(process.env.ETHEREUM_PRIVATE_KEY || "");
+        this.client = new DydxClient(HTTP_HOST, { 
+            web3: web3
+        });
+    }
 
-    const web3 = new Web3();
-    web3.eth.accounts.wallet.add(process.env.ETHEREUM_PRIVATE_KEY || "");
-
-    dydxClient = new DydxClient(HTTP_HOST, { web3: web3 });
-}
-
-export const getMarket = async (pair: string): Promise<IDydxMarket> => {
-    const markets: { markets: MarketsResponseObject } = await dydxClient.public.getMarkets();
-    const pairs = Object.keys(markets.markets)
-    // const result: IMarket[] = [];
-    const result = pairs.filter(m => markets.markets[m].market === pair)
-    console.log({result})
-    return {
-        pair: markets.markets[result[0]].market,
-        status: markets.markets[result[0]].status,
-        fundingRate: markets.markets[result[0]].nextFundingRate
+    public async initClient(){
+        const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(DYDX_WALLET)
+        this.client.apiKeyCredentials = apiCreds
+    }
+    
+    public async getMarket(pair: string): Promise<IDydxMarket>{
+        const markets: { markets: MarketsResponseObject } = await this.client.public.getMarkets();
+        const pairs = Object.keys(markets.markets)
+        // const result: IMarket[] = [];
+        const result = pairs.filter(m => markets.markets[m].market === pair)
+        console.log({result})
+        return {
+            pair: markets.markets[result[0]].market,
+            status: markets.markets[result[0]].status,
+            fundingRate: markets.markets[result[0]].nextFundingRate
+        }
+    }
+    
+    public async getFees(){
+        const fees = await this.client.public.getConfig()
+    
+        console.log({fees})
+        return fees
+    }
+    
+    public async makeOrder(){
+        const userExists = await this.client.public.doesUserExistWithAddress(
+            DYDX_WALLET,
+        );
+        console.log({userExists})
+        
+        const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(DYDX_WALLET)
+        this.client.apiKeyCredentials = apiCreds
+    
+        const account = await this.client.private.getAccount(DYDX_WALLET, {
+            apiKey: apiCreds.key,
+            passphrase: apiCreds.passphrase
+        })
+    
+        console.log({account})
     }
 }
 
@@ -64,3 +96,30 @@ export const getMarket = async (pair: string): Promise<IDydxMarket> => {
 //       assetResolution: '1000000',
 //       syntheticAssetId: '0x43454c4f2d36000000000000000000'
 //     },
+
+// {
+//     fees: {
+//       collateralAssetId: '0x02893294412a4c8f915f75892b395ebbf6859ec246ec365c3b1f56f47c3a0a5d',
+//       collateralTokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+//       defaultMakerFee: '0.0002',
+//       defaultTakerFee: '0.0005',
+//       exchangeAddress: '0xD54f502e184B6B739d7D27a6410a67dc462D69c8',
+//       maxExpectedBatchLengthMinutes: '720',
+//       maxFastWithdrawalAmount: '200000',
+//       cancelOrderRateLimiting: {
+//         maxPointsMulti: 3,
+//         maxPointsSingle: 9500,
+//         windowSecMulti: 10,
+//         windowSecSingle: 10
+//       },
+//       placeOrderRateLimiting: {
+//         maxPoints: 1750,
+//         windowSec: 10,
+//         targetNotional: 40000,
+//         minLimitConsumption: 4,
+//         minMarketConsumption: 20,
+//         minTriggerableConsumption: 100,
+//         maxOrderConsumption: 100
+//       }
+//     }
+//   }
