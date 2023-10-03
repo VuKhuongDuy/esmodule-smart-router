@@ -1,6 +1,7 @@
 import {
   DydxClient,
   Market,
+  MarketResponseObject,
   MarketsResponseObject,
   Trade,
 } from "@dydxprotocol/v3-client";
@@ -8,64 +9,94 @@ import { configDotenv } from "dotenv";
 import Web3 from "web3";
 import { IMarket } from "../interfaces/IMarket";
 import { IDydxMarket } from "../../interfaces";
-import { DYDX_WALLET } from "../../constants/constants.js";
+import { DYDX_PRIVATE_KEY, DYDX_WALLET } from "../../constants/constants.js";
+import Wei, { wei } from "@synthetixio/wei";
 
-configDotenv()
+configDotenv();
 
-export class dydxSDK {
-    public client: DydxClient
+export class DydxSDK {
+  public client: DydxClient;
 
-    constructor() {
-        const env = process.env.ENV || 'TEST'
-        const HTTP_HOST = env === 'TEST' ? 'https://api.stage.dydx.exchange' : process.env.DYDX_API || "https://api.dydx.exchange";
-        const web3 = new Web3();
-        web3.eth.accounts.wallet.add(process.env.ETHEREUM_PRIVATE_KEY || "");
-        this.client = new DydxClient(HTTP_HOST, { 
-            web3: web3
-        });
-    }
+  constructor() {
+    const env = process.env.ENV || "TEST";
+    const HTTP_HOST =
+      env === "TEST"
+        ? "https://api.stage.dydx.exchange"
+        : process.env.DYDX_API || "https://api.dydx.exchange";
+    const web3 = new Web3();
+    web3.eth.accounts.wallet.add(DYDX_PRIVATE_KEY || "");
+    this.client = new DydxClient(HTTP_HOST, {
+      web3: web3,
+    });
+  }
 
-    public async initClient(){
-        const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(DYDX_WALLET)
-        this.client.apiKeyCredentials = apiCreds
-    }
-    
-    public async getMarket(pair: string): Promise<IDydxMarket>{
-        const markets: { markets: MarketsResponseObject } = await this.client.public.getMarkets();
-        const pairs = Object.keys(markets.markets)
-        // const result: IMarket[] = [];
-        const result = pairs.filter(m => markets.markets[m].market === pair)
-        console.log({result})
-        return {
-            pair: markets.markets[result[0]].market,
-            status: markets.markets[result[0]].status,
-            fundingRate: markets.markets[result[0]].nextFundingRate
-        }
-    }
-    
-    public async getFees(){
-        const fees = await this.client.public.getConfig()
-    
-        console.log({fees})
-        return fees
-    }
-    
-    public async makeOrder(){
-        const userExists = await this.client.public.doesUserExistWithAddress(
-            DYDX_WALLET,
-        );
-        console.log({userExists})
-        
-        const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(DYDX_WALLET)
-        this.client.apiKeyCredentials = apiCreds
-    
-        const account = await this.client.private.getAccount(DYDX_WALLET, {
-            apiKey: apiCreds.key,
-            passphrase: apiCreds.passphrase
-        })
-    
-        console.log({account})
-    }
+  public async initClient() {
+    const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(
+      DYDX_WALLET
+    );
+    this.client.apiKeyCredentials = apiCreds;
+  }
+
+  public async getMarket(): Promise<MarketsResponseObject> {
+    const markets: { markets: MarketsResponseObject } =
+      await this.client.public.getMarkets();
+    return markets.markets;
+  }
+
+  public async getMarketPair(markets: MarketsResponseObject, pair: string) {
+    const pairs = Object.keys(markets);
+    const result = pairs.filter((m) => markets[m].market === pair);
+    return {
+      market: markets[result[0]],
+      fundingRate: {
+        pair: markets[result[0]].market,
+        status: markets[result[0]].status,
+        fundingRate: markets[result[0]].nextFundingRate,
+      },
+    };
+  }
+
+  public async getFees() {
+    const fees = await this.client.public.getConfig();
+
+    return fees;
+  }
+
+  public async makeOrder() {
+    const userExists = await this.client.public.doesUserExistWithAddress(
+      DYDX_WALLET
+    );
+    console.log({ userExists });
+
+    const apiCreds = await this.client.onboarding.recoverDefaultApiCredentials(
+      DYDX_WALLET
+    );
+    this.client.apiKeyCredentials = apiCreds;
+
+    const account = await this.client.private.getAccount(DYDX_WALLET, {
+      apiKey: apiCreds.key,
+      passphrase: apiCreds.passphrase,
+    });
+
+    console.log({ account });
+  }
+
+  public async caculDydxFee(volumes: Wei) {
+    const fees = await this.getFees();
+    return volumes.mul(fees.defaultTakerFee).mul(2);
+  }
+
+  public async getDydxPositions(dydxMarkets: MarketResponseObject) {
+    // const positions = await this.client.private.getPositions({
+    //   market: dydxMarkets,
+    // });
+  }
+
+  public async getDydxBalance(address: string) {
+    const balance = await this.client.private.getAccounts();
+
+    return wei(balance.accounts[0].quoteBalance);
+  }
 }
 
 // markets: {

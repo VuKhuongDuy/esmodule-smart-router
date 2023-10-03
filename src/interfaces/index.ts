@@ -1,5 +1,5 @@
-import { Market } from "@dydxprotocol/v3-client"
-import { FuturesMarket } from "../kwenta/types/futures"
+import { Market, MarketResponseObject } from "@dydxprotocol/v3-client"
+import { FuturesMarket } from "../kwenta/sdk/types/futures"
 
 declare enum DydxMarketStatus {
   ONLINE = "ONLINE",
@@ -12,6 +12,7 @@ declare enum DydxMarketStatus {
 export interface IMarkets {
   kwenta: FuturesMarket,
   dydx: IDydxMarket,
+  dydxMarkets: MarketResponseObject,
   gmx: any
 }
 

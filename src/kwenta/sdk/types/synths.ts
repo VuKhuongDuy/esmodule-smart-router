@@ -1,6 +1,6 @@
 import Wei from '@synthetixio/wei'
 
-import { CurrencyKey } from '../types/common'
+import { CurrencyKey } from './common'
 
 export type SynthBalance<T = Wei> = {
 	currencyKey: CurrencyKey

@@ -1,6 +1,6 @@
 import Wei from '@synthetixio/wei'
 
-import { NetworkId } from '../types/common'
+import { NetworkId } from './common'
 
 export type TokenBalances<T = Wei> = Record<
 	string,

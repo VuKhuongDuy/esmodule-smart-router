@@ -42,7 +42,7 @@ import {
 	MarginTransfer,
 	ConditionalOrderTypeEnum,
 } from '../types/futures'
-import { formatCurrency, formatDollars, weiFromWei } from '../utils/number'
+import { formatCurrency, formatDollars, weiFromWei } from './number'
 import {
 	FuturesAggregateStatResult,
 	FuturesOrderType as SubgraphOrderType,
@@ -50,7 +50,7 @@ import {
 	FuturesTradeResult,
 	FuturesMarginTransferResult,
 	CrossMarginAccountTransferResult,
-} from '../utils/subgraph'
+} from './subgraph'
 
 export const getFuturesEndpoint = (networkId: number) => {
 	return FUTURES_ENDPOINTS[networkId] || FUTURES_ENDPOINTS[10]
