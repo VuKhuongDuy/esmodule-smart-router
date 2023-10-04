@@ -1,43 +1,66 @@
 import Wei, { wei } from "@synthetixio/wei";
 import {
-  DYDX_WALLET,
+	DYDX_TOKENS,
+  KWENTA_TOKENS,
   KWENTA_WALLET,
   LEVERAGE,
   MAX_VOL,
   RATE_DREAM,
 } from "./constants/constants.js";
 import { DydxSDK } from "./dydx/services/service.js";
-import { IMarketDexes, IPositions } from "./interfaces/index.js";
-import { KwentaSDK } from "./kwenta/sdk/index.js";
+import { IMarketDexes, IMarkets, IPositions } from "./interfaces/index.js";
 import { PositionSide } from "./kwenta/sdk/types/futures.js";
 import {
-	checkNearlyLiquidation,
-  kwentaCaculateFee,
-  kwentaCreatePosition,
-  kwentaGetBalance,
-  kwentaGetPositions,
+	KwentaSDKCustom,
 } from "./kwenta/services.js";
 import {
   caculateProfit,
-  findBiggest,
   findBiggestProfit,
 } from "./utils/utils.js";
 import * as telegram from "./telegram/index.js";
-import { kwentaSdk } from "./index.js";
+import { KWENTA_ADDRESS } from "./kwenta/sdk/constants/exchange.js";
+
+export const getMarkets = async (KwentaSDKCustom: KwentaSDKCustom, dydxClient: DydxSDK): Promise<IMarkets> => {
+  const dydxMarkets = await dydxClient.getMarket();
+  const kwentaMarkets = await KwentaSDKCustom.kwentaGetMarket()
+  return {
+    kwenta: kwentaMarkets,
+    dydx: dydxMarkets,
+    gmx: null
+  }
+}
+
+/**
+ * Get current market data of kwenta, dydx and gmx
+ */
+export const getMarket = async (dydxClient: DydxSDK, markets: IMarkets, tokenIndex: number): Promise<IMarketDexes> => {
+  const kwentaMarket = await KwentaSDKCustom.kwentaGetMarketByPair(
+    KWENTA_TOKENS[tokenIndex],
+    markets.kwenta
+  );
+  const dydxMarket = await dydxClient.getMarketPair(markets.dydx, DYDX_TOKENS[tokenIndex])
+
+  return {
+    kwenta: kwentaMarket,
+    dydx: dydxMarket.fundingRate,
+    dydxMarkets: dydxMarket.market,
+    gmx: null,
+  };
+};
 
 /**
  * Check current funding rate and decision create a new position or not
  */
 export const checkForNewPosition = async (
   markets: IMarketDexes,
-  kwentaSdk: KwentaSDK,
+  KwentaSDKCustom: KwentaSDKCustom,
   dydxClient: DydxSDK,
   pair: string
 ) => {
   let profitAndFees;
   const kFundRate = (markets.kwenta.currentFundingRate as Wei).toNumber();
   const dydxFundRate = parseFloat(markets.dydx.fundingRate);
-  const vols = await getVolumesOfPairs(kwentaSdk, dydxClient);
+  const vols = await getVolumesOfPairs(KwentaSDKCustom, dydxClient);
 
   if (
     (kFundRate > 0 && dydxFundRate > 0) ||
@@ -47,7 +70,7 @@ export const checkForNewPosition = async (
       markets,
       vols,
       true,
-      kwentaSdk,
+      KwentaSDKCustom,
       dydxClient
     );
   } else {
@@ -55,7 +78,7 @@ export const checkForNewPosition = async (
       markets,
       vols,
       false,
-      kwentaSdk,
+      KwentaSDKCustom,
       dydxClient
     );
   }
@@ -74,7 +97,7 @@ export const checkForNewPosition = async (
     );
 
     // await kdCreatePosition(
-		// 	kwentaSdk,
+		// 	KwentaSDKCustom,
     //   dydxClient,
     //   kFundRate,
     //   dydxFundRate,
@@ -98,7 +121,7 @@ export const checkForNewPosition = async (
  * Check current funding rate and decision close an already position
  */
 export const checkToClosePosition = async (
-  kwentaSdk: KwentaSDK,
+  kwentaSdk: KwentaSDKCustom,
   dydxClient: DydxSDK,
   markets: IMarketDexes,
 	positions: IPositions
@@ -131,7 +154,7 @@ export const checkToClosePosition = async (
 
 	const { rKD, rKG, rDG } = findBiggestProfit(profitAndFees);
 
-	const nearlyLiquidation = await checkNearlyLiquidation(kwentaSdk, positions.kwenta)
+	const nearlyLiquidation = await kwentaSdk.checkNearlyLiquidation(positions.kwenta)
   if (rKD < parseFloat(RATE_DREAM) || nearlyLiquidation) {
     await telegram.sendMessage(`Close positions of pair ${positions.kwenta.marketKey} on Kwenta and Dydx`);
 
@@ -160,17 +183,19 @@ export const checkToClosePosition = async (
  * @param vol volume of position
  */
 export const kdCreatePosition = async (
-	kwentaSdk: KwentaSDK,
+	kwentaSdk: KwentaSDKCustom,
   dydxClient: DydxSDK,
   kFundRate: number,
   dFundRate: number,
   vol: Wei,
 	markets: IMarketDexes
 ) => {
+	// both funding rate same side
   if ((kFundRate > 0 && dFundRate > 0) || (kFundRate < 0 && dFundRate < 0)) {
+
+		// kwenta funding rate > dydx funding rate
     if (Math.abs(kFundRate) > Math.abs(dFundRate)) {
-      await kwentaCreatePosition(
-				kwentaSdk,
+      await kwentaSdk.kwentaCreatePosition(
         wei(vol),
         kFundRate > 0 ? PositionSide.SHORT : PositionSide.LONG,
 				markets.kwenta
@@ -180,13 +205,13 @@ export const kdCreatePosition = async (
         kFundRate > 0 ? PositionSide.LONG : PositionSide.SHORT
       );
       await telegram.sendMessage(`Created KWENTA-long and DYDX-short`);
+
     } else if (Math.abs(dFundRate) > Math.abs(kFundRate)) {
       await dydxClient.dydxCreatePosition(
         wei(vol),
         dFundRate > 0 ? PositionSide.SHORT : PositionSide.LONG
       );
-      await kwentaCreatePosition(
-				kwentaSdk,
+      await kwentaSdk.kwentaCreatePosition(
         wei(vol),
         dFundRate > 0 ? PositionSide.LONG : PositionSide.SHORT,
 				markets.kwenta
@@ -195,26 +220,20 @@ export const kdCreatePosition = async (
     }
   } else {
     if (kFundRate > 0) {
-      await kwentaCreatePosition(kwentaSdk, wei(vol), PositionSide.SHORT, markets.kwenta);
+      await kwentaSdk.kwentaCreatePosition(wei(vol), PositionSide.SHORT, markets.kwenta);
       await dydxClient.dydxCreatePosition(wei(vol), PositionSide.LONG);
       await telegram.sendMessage(`Created KWENTA-short and DYDX-long`);
     } else {
-      await kwentaCreatePosition(kwentaSdk, wei(vol), PositionSide.LONG, markets.kwenta);
+      await kwentaSdk.kwentaCreatePosition(wei(vol), PositionSide.LONG, markets.kwenta);
       await dydxClient.dydxCreatePosition(wei(vol), PositionSide.SHORT);
       await telegram.sendMessage(`Created KWENTA-long and DYDX-short`);
     }
   }
 };
 
-export const kdClosePosition = async (kwentaSdk: KwentaSDK, dydxClient: DydxSDK, marketDexes: IMarketDexes) => {
-	
-	// market: {
-	// 	address: marketDexes.kwenta.market
-	// 	key: marketDexes.kwenta.marketKey
-	// },
-	// crossMarginAddress: string,
-	// desiredFillPrice: Wei
-	// kwentaSdk.futures.closeCrossMarginPosition()
+export const kdClosePosition = async (kwentaSdk: KwentaSDKCustom, dydxClient: DydxSDK, marketDexes: IMarketDexes) => {
+	await kwentaSdk.getCrossMarginAccounts();
+	await kwentaSdk.closePosition(marketDexes.kwenta)
 }
 
 /**
@@ -222,7 +241,7 @@ export const kdClosePosition = async (kwentaSdk: KwentaSDK, dydxClient: DydxSDK,
  * @param markets Markets info of dexes
  * @param vols volume of position
  * @param sameSide both funding rates < 0 or > 0
- * @param kwentaSdk kwenta sdk
+ * @param KwentaSDKCustom kwenta sdk
  * @param dydxClient dydx client
  * @returns
  */
@@ -230,7 +249,7 @@ export const getProfitAndFee = async (
   markets: IMarketDexes,
   vols: any,
   sameSide: Boolean,
-  kwentaSdk: KwentaSDK,
+  kwentaSdk: KwentaSDKCustom,
   dydxClient: DydxSDK
 ) => {
   const { kwenta, dydx, gmx } = markets;
@@ -240,7 +259,7 @@ export const getProfitAndFee = async (
 
   if (kwenta) {
     kFundRate = (kwenta.currentFundingRate as Wei).abs().toNumber();
-    kwentaFee = await kwentaCaculateFee(markets.kwenta, vols.kdVol, kwentaSdk);
+    kwentaFee = await kwentaSdk.kwentaCaculateFee(markets.kwenta, vols.kdVol);
   }
 
   if (dydx) {
@@ -297,28 +316,46 @@ export const getProfitAndFee = async (
 
 /**
  * Get list current positions on dexes
- * @param kwentaSdk
+ * @param KwentaSDKCustom
  * @param dydxClient
  * @param markets markets of all dexes
  */
 export const getPositions = async (
-  kwentaSdk: KwentaSDK,
+  kwentaSdk: KwentaSDKCustom,
   dydxClient: DydxSDK,
-  markets: IMarketDexes
 ) => {
-  const kwentaPositions = await kwentaGetPositions(kwentaSdk, markets.kwenta);
-  console.log({ kwentaPositions });
+  const markets = await getMarkets(kwentaSdk, dydxClient);
+  const kwentaPositions = [] as any;
   const dydxPositions = await dydxClient.getDydxPositions();
+
+  dydxPositions.forEach(async pos => {
+    const pair = pos.market
+    const index = DYDX_TOKENS.findIndex(m => m === pair)
+    if(index >= 0) {
+      const marketDexes = await getMarket(dydxClient, markets, index)
+      const kPosition = await kwentaSdk.kwentaGetPositions(marketDexes.kwenta)
+      kwentaPositions.push(kPosition)
+    }
+    // await checkToClosePosition(KwentaSDKCustom, dydxClient, marketDexes, {
+    //   dydx: pos,
+    //   kwenta: kPosition[0],
+    //   gmx: null
+    // });
+  });
+	return {
+		kwenta: kwentaPositions,
+		dydx: dydxPositions
+	}
 };
 
 /**
  * Caculate volume will trade on each of dex-pair (kwenta-dydx, kwenta-gmx, dydx-gmx)
- * @param kwentaSdk
+ * @param KwentaSDKCustom
  * @param dydxClient
  * @returns
  */
-const getVolumesOfPairs = async (kwentaSdk: KwentaSDK, dydxClient: DydxSDK) => {
-  const kwentaBalance = await kwentaGetBalance(kwentaSdk, KWENTA_WALLET);
+const getVolumesOfPairs = async (kwentaSdk: KwentaSDKCustom, dydxClient: DydxSDK) => {
+  const kwentaBalance = await kwentaSdk.kwentaGetBalance( KWENTA_WALLET);
   const dydxBalance = await dydxClient.getDydxBalance();
 
   const gmxBalance = wei(0);
@@ -340,8 +377,3 @@ const getVolumesOfPairs = async (kwentaSdk: KwentaSDK, dydxClient: DydxSDK) => {
     dgVol: dgVol.mul(LEVERAGE),
   };
 };
-
-// export const checkBalanceWallet = async () => {
-//   const balanceKwenta = await kwentaGetBalance(KWENTA_WALLET);
-//   const balanceDydx = await getDydxBalance(KWENTA_WALLET);
-// };

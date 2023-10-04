@@ -1,137 +1,258 @@
 import Wei, { wei } from "@synthetixio/wei";
-import { LEVERAGE, RATE_STOPLOST, ZERO_ADDRESS } from "../constants/constants.js";
+import { ethers } from "ethers";
+import {
+  KWENTA_PRIVATE_KEY,
+  LEVERAGE,
+  NETWORKS,
+  RATE_STOPLOST,
+  ZERO_ADDRESS,
+} from "../constants/constants.js";
 import { KWENTA_ADDRESS } from "./sdk/constants/exchange.js";
-import { DEFAULT_PRICE_IMPACT_DELTA_PERCENT, SL_TP_MAX_SIZE } from "./sdk/constants/futures.js";
+import {
+  DEFAULT_PRICE_IMPACT_DELTA_PERCENT,
+  SL_TP_MAX_SIZE,
+} from "./sdk/constants/futures.js";
 import { KwentaSDK } from "./sdk/index.js";
-import { FuturesMarket, FuturesMarketAsset, FuturesPosition, PositionSide, SmartMarginOrderInputs } from "./sdk/types/futures.js";
-import { calculateDesiredFillPrice, getDefaultPriceImpact } from "./sdk/utils/futures.js";
+import {
+  FuturesMarket,
+  FuturesMarketAsset,
+  FuturesPosition,
+  FuturesPotentialTradeDetails,
+  PositionSide,
+  SmartMarginOrderInputs,
+} from "./sdk/types/futures.js";
+import {
+  calculateDesiredFillPrice,
+  getDefaultPriceImpact,
+  serializePotentialTrade,
+  unserializePotentialTrade,
+} from "./sdk/utils/futures.js";
 import { floorNumber } from "./sdk/utils/number.js";
 
-export const kwentaGetMarket = async (sdk: KwentaSDK): Promise<FuturesMarket[]> => {
-  return sdk.futures.getMarkets();
-};
+export class KwentaSDKCustom {
+  public client: KwentaSDK
+  public accounts: string[]
+  public positions: FuturesPosition<Wei>[]
+  public preview: any
 
-export const kwentaGetMarketByPair = async (pair: string, markets: FuturesMarket[]) => {
-  return markets.filter((elem: any) => elem.marketName === pair)[0];
-};
-
-export const kwentaGetPositions = async (
-  kwentaSdk: KwentaSDK,
-  market: FuturesMarket
-) => {
-  const accounts = await kwentaSdk.futures.getCrossMarginAccounts();
-  const positions = await kwentaSdk.futures.getFuturesPositions(accounts[0], [
-    {
-      asset: market.asset,
-      marketKey: market.marketKey,
-      address: market.market,
-    },
-  ]);
-  return positions.filter(m => m.position)
-};
-
-export const kwentaGetBalance = async (kwentaSdk: KwentaSDK, address: string) => {
-  const balance = await kwentaSdk.synths.getSynthBalances(address);
-  return balance.susdWalletBalance;
-};
-
-export const kwentaCaculateFee = async (
-  market: FuturesMarket,
-  volumes: Wei,
-  kwentaSdk: KwentaSDK
-): Promise<Wei> => {
-  const orderPrice = getOrderPrice(kwentaSdk, market.asset);
-  const sizeDelta = String(floorNumber(volumes.div(orderPrice as Wei), 4));
-
-  const crossPreview = await kwentaSdk.futures.getCrossMarginTradePreview(
-    ZERO_ADDRESS,
-    market.marketKey,
-    market.market,
-    {
-      sizeDelta: wei(sizeDelta),
-      marginDelta: volumes.div(LEVERAGE),
-      orderPrice: orderPrice as Wei,
-      leverageSide: PositionSide.LONG,
-    }
-  );
-
-  console.log("crossPreview.fee: ", crossPreview.fee.toNumber());
-
-  console.log("market.keeperDeposit: ", market.keeperDeposit.toNumber());
-
-  return crossPreview.fee.add(market.keeperDeposit).mul(2);
-};
-
-export const getOrderPrice = (kwentaSdk: KwentaSDK, asset: FuturesMarketAsset) => {
-  const prices = kwentaSdk.prices.currentPrices;
-  return prices.offChain[asset] ? prices.offChain[asset] : wei("0");
-
-}
-
-export const kwentaCreatePosition = async (kwentaSdk: KwentaSDK, vol: Wei, type: PositionSide, market: FuturesMarket) => {
-  const accounts = await kwentaSdk.futures.getCrossMarginAccounts(KWENTA_ADDRESS)
-  const orderPrice = getOrderPrice(kwentaSdk, market.asset)
-  const sizeDelta = vol.div(orderPrice as Wei);
-  const marginDelta = vol.div((orderPrice as Wei).mul(LEVERAGE));
-  const previews = await kwentaSdk.futures.getCrossMarginTradePreview(
-    accounts[0],
-    market.marketKey,
-    market.market,
-    {
-      sizeDelta: wei(sizeDelta),
-      marginDelta: marginDelta,
-      orderPrice: orderPrice as Wei,
-      leverageSide: type,
-    }
-  )
-  const stopLostPrice = type === PositionSide.LONG ? 
-  (orderPrice as Wei).sub((orderPrice as Wei).sub(previews.liqPrice).mul(RATE_STOPLOST)) :
-  (orderPrice as Wei).add(previews.liqPrice.sub(orderPrice as Wei).mul(RATE_STOPLOST))
+  constructor() {
+    const provider = new ethers.providers.JsonRpcProvider(NETWORKS.optimism.rpc);
     
-  // const tradeMarket = await kwentaSdk.futures.getTradesForMarket(market.asset, KWENTA_ADDRESS, previews., 1)
+    this.client = new KwentaSDK({
+      networkId: 10,
+      provider,
+    });
+    this.initClient()
 
-  // const preview = previews.
-	// 	const unserialized = preview ? unserializePotentialTrade(preview) : null
+    this.accounts = []
+    this.positions = []
+    this.preview = null
+  }
 
-  // const priceImpact = getDefaultPriceImpact('market')
-	// const conditionalOrderPrice = wei(orderPrice || 0)
-	// 		const price = unserialized.price
-	// 		const desiredFillPrice = calculateDesiredFillPrice(nativeSizeDelta, price, priceImpact)
+  public async initClient() {
+    const provider = new ethers.providers.JsonRpcProvider(NETWORKS.optimism.rpc);
+    let signer = new ethers.Wallet(KWENTA_PRIVATE_KEY);
+    signer = await signer.connect(provider);
+    this.client.setSigner(signer);
+    await this.client.prices.startPriceUpdates(30000);
+  }
 
-  //     const desiredSLFillPrice = calculateDesiredFillPrice(
-  //       previews.sizeDelta,
-  //       wei(stopLossPrice || 0),
-  //       wei(DEFAULT_PRICE_IMPACT_DELTA_PERCENT.STOP_LOSS)
-  //     )
+  public async getCrossMarginAccounts() {
+    this.accounts = await this.client.futures.getCrossMarginAccounts(KWENTA_ADDRESS)
+  }
 
-  // const orderInputs: SmartMarginOrderInputs = {
-  //   sizeDelta: sizeDelta,
-  //   marginDelta: marginDelta,
-  //   desiredFillPrice: ,
-  //   stopLoss: {
-  //     price: stopLostPrice,
-  //     desiredFillPrice: desiredSLFillPrice,
-  //     sizeDelta: tradeInputs.nativeSizeDelta.gt(0) ? SL_TP_MAX_SIZE.neg() : SL_TP_MAX_SIZE,
-  //   }
-  // }
+  public async getCrossMarginTradePreview(market: FuturesMarket, volumes: Wei) {
+    const orderPrice = await this.getOrderPrice(market.asset);
+    const sizeDelta = String(floorNumber(volumes.div(orderPrice as Wei), 4));
+    this.preview = await this.client.futures.getCrossMarginTradePreview(
+      ZERO_ADDRESS,
+      market.marketKey,
+      market.market,
+      {
+        sizeDelta: wei(sizeDelta),
+        marginDelta: volumes.div(LEVERAGE),
+        orderPrice: orderPrice as Wei,
+        leverageSide: PositionSide.LONG,
+      }
+    );
+  }
 
-  // await kwentaSdk.futures.submitCrossMarginOrder(
-  //   {
-  //     key: market.marketKey,
-  //     address: market.market
-  //   },
-  //   KWENTA_ADDRESS,
-  //   accounts[0],
-  //   orderInputs,
-  //   { cancelPendingReduceOrders: isClosing, cancelExpiredDelayedOrders: !!staleOrder }
-  // )
+  public async kwentaGetMarket (
+  ): Promise<FuturesMarket[]> {
+    return this.client.futures.getMarkets();
+  };
+  
+  public static async kwentaGetMarketByPair (
+    pair: string,
+    markets: FuturesMarket[]
+  ){
+    return markets.filter((elem: any) => elem.marketName === pair)[0];
+  };
+  
+  public async kwentaGetPositions (
+    market: FuturesMarket
+  ){
+    await this.getCrossMarginAccounts();
+    this.positions = await this.client.futures.getFuturesPositions(this.accounts[0], [
+      {
+        asset: market.asset,
+        marketKey: market.marketKey,
+        address: market.market,
+      },
+    ]);
+    return this.positions.filter((m) => m.position);
+  };
+  
+  public async kwentaGetBalance (
+    address: string
+  ){
+    const balance = await this.client.synths.getSynthBalances(address);
+    return balance.susdWalletBalance;
+  };
+  
+  public async kwentaCaculateFee (
+    market: FuturesMarket,
+    volumes: Wei,
+  ): Promise<Wei> {
+    await this.getCrossMarginTradePreview(market, volumes)
+
+    console.log("preview.fee: ", this.preview.fee.toNumber());
+  
+    console.log("market.keeperDeposit: ", market.keeperDeposit.toNumber());
+  
+    return this.preview.fee.add(market.keeperDeposit).mul(2);
+  };
+  
+  public async getOrderPrice(
+    asset: FuturesMarketAsset
+  ) {
+    const prices = this.client.prices.currentPrices;
+    return prices.offChain[asset] ? prices.offChain[asset] : wei("0");
+  };
+  
+  public async kwentaCreatePosition (
+    nativeSize: Wei,
+    tradeSide: PositionSide,
+    market: FuturesMarket
+  ){
+    const orderPrice = await this.getOrderPrice(market.asset);
+    const sizeDelta = nativeSize.div(orderPrice as Wei);
+    const nativeSizeDelta =
+      tradeSide === PositionSide.LONG ? wei(nativeSize) : wei(nativeSize).neg();
+    const marginDelta = nativeSize.div((orderPrice as Wei).mul(LEVERAGE));
+  
+    const preview = await this.client.futures.getCrossMarginTradePreview(
+      this.accounts[0],
+      market.marketKey,
+      market.market,
+      {
+        sizeDelta: wei(sizeDelta),
+        marginDelta: marginDelta,
+        orderPrice: orderPrice as Wei,
+        leverageSide: tradeSide,
+      }
+    );
+    const serializedPreview = serializePotentialTrade({
+      ...preview,
+      marketKey: market.marketKey,
+    })
+  
+    const stopLostPrice =
+      tradeSide === PositionSide.LONG
+        ? (orderPrice as Wei).sub(
+            (orderPrice as Wei).sub(preview.liqPrice).mul(RATE_STOPLOST)
+          )
+        : (orderPrice as Wei).add(
+            preview.liqPrice.sub(orderPrice as Wei).mul(RATE_STOPLOST)
+          );
+  
+    const desiredSLFillPrice = calculateDesiredFillPrice(
+      nativeSizeDelta,
+      stopLostPrice,
+      wei(DEFAULT_PRICE_IMPACT_DELTA_PERCENT.STOP_LOSS)
+    );
+  
+    const unserialized = serializedPreview ? unserializePotentialTrade(serializedPreview) : null;
+    const price = (unserialized as FuturesPotentialTradeDetails).price;
+    const desiredFillPrice = calculateDesiredFillPrice(
+      nativeSizeDelta,
+      price,
+      getDefaultPriceImpact("market")
+    );
+  
+    const orderInputs: SmartMarginOrderInputs = {
+      sizeDelta: sizeDelta,
+      marginDelta: marginDelta,
+      desiredFillPrice: desiredFillPrice,
+      stopLoss: {
+        price: stopLostPrice,
+        desiredFillPrice: desiredSLFillPrice,
+        sizeDelta: nativeSizeDelta.gt(0) ? SL_TP_MAX_SIZE.neg() : SL_TP_MAX_SIZE,
+      },
+    };
+  
+    const tx = await this.client.futures.submitCrossMarginOrder(
+      {
+        key: market.marketKey,
+        address: market.market,
+      },
+      KWENTA_ADDRESS,
+      this.accounts[0],
+      orderInputs,
+      { cancelPendingReduceOrders: false, cancelExpiredDelayedOrders: false }
+    );
+  
+    await tx.wait()
+  
+    console.log({tx})
+  };
+  
+  public async checkNearlyLiquidation (
+    position: FuturesPosition<Wei>
+  ): Promise<Boolean> {
+    const prices = this.client.prices.currentPrices;
+  
+    return true;
+  };
+  
+  public async getClosePositionPreview(position: FuturesPosition<Wei>) {
+
+    const unserialized = this.preview ? unserializePotentialTrade(this.preview) : null
+    if (unserialized) {
+      const priceImpact = getDefaultPriceImpact('market')
+      let orderPrice = unserialized.price
+      const desiredFillPrice = calculateDesiredFillPrice(
+        position.position?.side === PositionSide.LONG ? wei(-1) : wei(1),
+        orderPrice,
+        priceImpact
+      )
+  
+      return {
+        ...unserialized,
+        desiredFillPrice,
+        leverage: unserialized.margin.gt(0)
+          ? unserialized.notionalValue.div(unserialized.margin).abs()
+          : wei(0),
+      }
+    }
+    return null
+  }
+
+  public async closePosition(market: FuturesMarket) {
+    const position = this.positions.filter(p => {
+      p.asset === market.asset
+    })[0]
+
+    const preview = await this.getClosePositionPreview(position)
+
+    // const tx = await this.client.futures.closeCrossMarginPosition(
+		// 					{ address: market.market, key: position.marketKey },
+		// 					this.accounts[0],
+		// 					preview?.desiredFillPrice as Wei
+		// 			  )
+  }
 }
 
-export const checkNearlyLiquidation = async (kwentaSdk: KwentaSDK, position: FuturesPosition<Wei>): Promise<Boolean> => {
-  const prices = kwentaSdk.prices.currentPrices;
-
-  return true;
-}
 // {
 //   market: '0x031A448F59111000b96F016c37e9c71e57845096',
 //   marketKey: 'sTRXPERP',

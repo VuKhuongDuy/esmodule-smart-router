@@ -28,6 +28,7 @@ export class DydxSDK {
     this.client = new DydxClient(HTTP_HOST, {
       web3: web3,
     });
+    this.initClient()
   }
 
   public async initClient() {
