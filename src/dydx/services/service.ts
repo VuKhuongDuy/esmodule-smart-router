@@ -3,7 +3,6 @@ import {
   Market,
   MarketResponseObject,
   MarketsResponseObject,
-  Trade,
 } from "@dydxprotocol/v3-client";
 import { configDotenv } from "dotenv";
 import Web3 from "web3";
@@ -11,6 +10,7 @@ import { IMarket } from "../interfaces/IMarket";
 import { IDydxMarket } from "../../interfaces";
 import { DYDX_PRIVATE_KEY, DYDX_WALLET } from "../../constants/constants.js";
 import Wei, { wei } from "@synthetixio/wei";
+import { PositionSide } from "../../kwenta/sdk/types/futures.js";
 
 configDotenv();
 
@@ -62,7 +62,7 @@ export class DydxSDK {
     return fees;
   }
 
-  public async makeOrder() {
+  public async dydxCreatePosition(vol: Wei, type: PositionSide) {
     const userExists = await this.client.public.doesUserExistWithAddress(
       DYDX_WALLET
     );
@@ -86,13 +86,14 @@ export class DydxSDK {
     return volumes.mul(fees.defaultTakerFee).mul(2);
   }
 
-  public async getDydxPositions(dydxMarkets: MarketResponseObject) {
-    // const positions = await this.client.private.getPositions({
-    //   market: dydxMarkets,
-    // });
+  public async getDydxPositions() {
+    const result = await this.client.private.getPositions({
+      market: Market.TRX_USD,
+    });
+    return result.positions
   }
 
-  public async getDydxBalance(address: string) {
+  public async getDydxBalance() {
     const balance = await this.client.private.getAccounts();
 
     return wei(balance.accounts[0].quoteBalance);

@@ -1,5 +1,6 @@
-import { Market, MarketResponseObject } from "@dydxprotocol/v3-client"
-import { FuturesMarket } from "../kwenta/sdk/types/futures"
+import { Market, MarketResponseObject, MarketsResponseObject, PositionResponseObject } from "@dydxprotocol/v3-client"
+import Wei from "@synthetixio/wei"
+import { FuturesMarket, FuturesPosition } from "../kwenta/sdk/types/futures"
 
 declare enum DydxMarketStatus {
   ONLINE = "ONLINE",
@@ -9,10 +10,22 @@ declare enum DydxMarketStatus {
   INITIALIZING = "INITIALIZING"
 }
 
-export interface IMarkets {
+export interface IMarketDexes {
   kwenta: FuturesMarket,
   dydx: IDydxMarket,
   dydxMarkets: MarketResponseObject,
+  gmx: any
+}
+
+export interface IMarkets {
+  kwenta: FuturesMarket[],
+  dydx: MarketsResponseObject,
+  gmx: any
+}
+
+export interface IPositions {
+  kwenta: FuturesPosition<Wei>,
+  dydx: PositionResponseObject,
   gmx: any
 }
 

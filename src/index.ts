@@ -2,10 +2,11 @@ import * as ethers from "ethers";
 import {DydxSDK} from "./dydx/services/service.js";
 import { KwentaSDK } from "./kwenta/sdk/index.js";
 import { DYDX_TOKENS, KWENTA_PRIVATE_KEY, KWENTA_TOKENS, NETWORKS } from "./constants/constants.js";
-import { IMarkets } from "./interfaces/index.js";
+import { IMarketDexes, IMarkets } from "./interfaces/index.js";
 import { MarketsResponseObject } from "@dydxprotocol/v3-client";
-import { kwentaGetMarket } from "./kwenta/services.js";
-import { checkForNewPosition, checkToClosePosition, getPositions } from "./service.js";
+import { kwentaGetMarket, kwentaGetMarketByPair, kwentaGetPositions } from "./kwenta/services.js";
+import { checkForNewPosition, checkToClosePosition } from "./service.js";
+import * as telegram from "./telegram/index.js";
 
 export let kwentaSdk: KwentaSDK;
 export let dydxClient: DydxSDK
@@ -29,20 +30,25 @@ const init = async () => {
   
 };
 
-const getMarkets = async (): Promise<MarketsResponseObject> => {
+const getMarkets = async (): Promise<IMarkets> => {
   const dydxMarkets = await dydxClient.getMarket();
-  return dydxMarkets
+  const kwentaMarkets = await kwentaGetMarket(kwentaSdk)
+  return {
+    kwenta: kwentaMarkets,
+    dydx: dydxMarkets,
+    gmx: null
+  }
 }
 
 /**
  * Get current market data of kwenta, dydx and gmx
  */
-const getMarket = async (dydxMarkets: MarketsResponseObject, tokenIndex: number): Promise<IMarkets> => {
-  const kwentaMarket = await kwentaGetMarket(
+const getMarket = async (markets: IMarkets, tokenIndex: number): Promise<IMarketDexes> => {
+  const kwentaMarket = await kwentaGetMarketByPair(
     KWENTA_TOKENS[tokenIndex],
-    kwentaSdk
+    markets.kwenta
   );
-  const dydxMarket = await dydxClient.getMarketPair(dydxMarkets, DYDX_TOKENS[tokenIndex])
+  const dydxMarket = await dydxClient.getMarketPair(markets.dydx, DYDX_TOKENS[tokenIndex])
 
   return {
     kwenta: kwentaMarket,
@@ -52,32 +58,36 @@ const getMarket = async (dydxMarkets: MarketsResponseObject, tokenIndex: number)
   };
 };
 
-/**
- * Base on funding rate of one pair on markets, make a decision for new position or already position
- */
-const reviewContextFundingRate = async (
-  markets: IMarkets
-) => {
-  
-  await checkForNewPosition(markets, kwentaSdk, dydxClient);
-
-  await checkToClosePosition(markets);
-};
-
 const main = async () => {
   await init();
 
-  // setInterval(async () => {
-  const dydxMarkets = await getMarkets();
+  const markets = await getMarkets();
+  const dydxPositions = await dydxClient.getDydxPositions();
+  const kwentaPositions = [] as any;
+
+  dydxPositions.forEach(async pos => {
+    const pair = pos.market
+    const index = DYDX_TOKENS.findIndex(m => m === pair)
+    if(index >= 0) {
+      const marketDexes = await getMarket(markets, index)
+      const kPosition = await kwentaGetPositions(kwentaSdk, marketDexes.kwenta)
+      kwentaPositions.push(kPosition)
+    }
+    // await checkToClosePosition(kwentaSdk, dydxClient, marketDexes, {
+    //   dydx: pos,
+    //   kwenta: kPosition[0],
+    //   gmx: null
+    // });
+  });
+
+
+  await telegram.sendMessage(`----------START CHECK---------`)
+
   for (let i = 0; i < DYDX_TOKENS.length; i++) {
     console.log('----------------------', DYDX_TOKENS[i], '\t')
-    const markets = await getMarket(dydxMarkets, i)
-
-    await getPositions(kwentaSdk, dydxClient, markets);
-
-    await reviewContextFundingRate(markets);
+    const marketDexes = await getMarket(markets, i)
+    await checkForNewPosition(marketDexes, kwentaSdk, dydxClient, DYDX_TOKENS[i]);
   }
-  // }, 30000)
 };
 
 main();
