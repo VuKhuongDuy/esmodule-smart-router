@@ -18,7 +18,6 @@ import {
   findBiggestProfit,
 } from "./utils/utils.js";
 import * as telegram from "./telegram/index.js";
-import { KWENTA_ADDRESS } from "./kwenta/sdk/constants/exchange.js";
 
 export const getMarkets = async (KwentaSDKCustom: KwentaSDKCustom, dydxClient: DydxSDK): Promise<IMarkets> => {
   const dydxMarkets = await dydxClient.getMarket();
@@ -96,14 +95,14 @@ export const checkForNewPosition = async (
       vols.kdVol.toNumber()
     );
 
-    // await kdCreatePosition(
-		// 	KwentaSDKCustom,
-    //   dydxClient,
-    //   kFundRate,
-    //   dydxFundRate,
-    //   wei(vols.kdVol),
-		//   markets
-    // );
+    await kdCreatePosition(
+			KwentaSDKCustom,
+      dydxClient,
+      kFundRate,
+      dydxFundRate,
+      wei(vols.kdVol),
+		  markets
+    );
   } else if (
     dexPair === "kwenta_gmx" &&
     rKG > parseFloat(RATE_DREAM)
@@ -154,8 +153,7 @@ export const checkToClosePosition = async (
 
 	const { rKD, rKG, rDG } = findBiggestProfit(profitAndFees);
 
-	const nearlyLiquidation = await kwentaSdk.checkNearlyLiquidation(positions.kwenta)
-  if (rKD < parseFloat(RATE_DREAM) || nearlyLiquidation) {
+  if (rKD < parseFloat(RATE_DREAM)) {
     await telegram.sendMessage(`Close positions of pair ${positions.kwenta.marketKey} on Kwenta and Dydx`);
 
     await kdClosePosition(
@@ -200,17 +198,17 @@ export const kdCreatePosition = async (
         kFundRate > 0 ? PositionSide.SHORT : PositionSide.LONG,
 				markets.kwenta
       );
-      await dydxClient.dydxCreatePosition(
-        wei(vol),
-        kFundRate > 0 ? PositionSide.LONG : PositionSide.SHORT
-      );
+      // await dydxClient.dydxCreatePosition(
+      //   wei(vol),
+      //   kFundRate > 0 ? PositionSide.LONG : PositionSide.SHORT
+      // );
       await telegram.sendMessage(`Created KWENTA-long and DYDX-short`);
 
     } else if (Math.abs(dFundRate) > Math.abs(kFundRate)) {
-      await dydxClient.dydxCreatePosition(
-        wei(vol),
-        dFundRate > 0 ? PositionSide.SHORT : PositionSide.LONG
-      );
+      // await dydxClient.dydxCreatePosition(
+      //   wei(vol),
+      //   dFundRate > 0 ? PositionSide.SHORT : PositionSide.LONG
+      // );
       await kwentaSdk.kwentaCreatePosition(
         wei(vol),
         dFundRate > 0 ? PositionSide.LONG : PositionSide.SHORT,
@@ -221,18 +219,18 @@ export const kdCreatePosition = async (
   } else {
     if (kFundRate > 0) {
       await kwentaSdk.kwentaCreatePosition(wei(vol), PositionSide.SHORT, markets.kwenta);
-      await dydxClient.dydxCreatePosition(wei(vol), PositionSide.LONG);
+      // await dydxClient.dydxCreatePosition(wei(vol), PositionSide.LONG);
       await telegram.sendMessage(`Created KWENTA-short and DYDX-long`);
     } else {
       await kwentaSdk.kwentaCreatePosition(wei(vol), PositionSide.LONG, markets.kwenta);
-      await dydxClient.dydxCreatePosition(wei(vol), PositionSide.SHORT);
+      // await dydxClient.dydxCreatePosition(wei(vol), PositionSide.SHORT);
       await telegram.sendMessage(`Created KWENTA-long and DYDX-short`);
     }
   }
 };
 
 export const kdClosePosition = async (kwentaSdk: KwentaSDKCustom, dydxClient: DydxSDK, marketDexes: IMarketDexes) => {
-	await kwentaSdk.getCrossMarginAccounts();
+  await telegram.sendMessage(`Prepare close KWENTA and DYDX position`);
 	await kwentaSdk.closePosition(marketDexes.kwenta)
 }
 
@@ -370,7 +368,8 @@ const getVolumesOfPairs = async (kwentaSdk: KwentaSDKCustom, dydxClient: DydxSDK
   let dgVol = gmxBalance.toNumber() < MAX_VOL ? gmxBalance : wei(MAX_VOL);
   dgVol = dydxBalance.toNumber() < dgVol.toNumber() ? dydxBalance : dgVol;
 
-  kdVol = wei(200);
+  // kdVol = wei(200);
+  console.log({kdVol: kdVol.mul(LEVERAGE).toNumber()})
   return {
     kdVol: kdVol.mul(LEVERAGE),
     kgVol: kgVol.mul(LEVERAGE),

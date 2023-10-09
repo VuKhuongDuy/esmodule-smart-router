@@ -1,9 +1,9 @@
 import "dotenv/config";
 
-export const PORT = process.env.PORT || 3000
+export const PORT = process.env.PORT || 3001
 
 export const DYDX_TOKENS = [
-  "ETH-USD",
+  // "ETH-USD",
   // "BTC-USD",
   // "LINK-USD",
   // "SOL-USD",
@@ -24,11 +24,11 @@ export const DYDX_TOKENS = [
   // "COMP-USD",
   // "XMR-USD",
   // "MKR-USD",
-  // "YFI-USD",
+  "YFI-USD",
 ];
 
 export const KWENTA_TOKENS = [
-  "ETH/sUSD",
+  // "ETH/sUSD",
   // "BTC/sUSD",
   // "LINK/sUSD",
   // "SOL/sUSD",
@@ -49,7 +49,7 @@ export const KWENTA_TOKENS = [
   // "COMP/sUSD",
   // "XMR/sUSD",
   // "MKR/sUSD",
-  // "YFI/sUSD",
+  "YFI/sUSD",
 ];
 
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -77,8 +77,8 @@ export const DYDX_WALLET = process.env.DYDX_WALLET || "";
 export const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || ''
 export const TELEGRAM_CHATID = process.env.TELEGRAM_CHATID || ''
 
-export const RATE_DREAM = process.env.RATE_DREAM || '1.1'
+export const RATE_DREAM = process.env.RATE_DREAM || '1'
 export const LEVERAGE = process.env.LEVERAGE || 5
-export const MAX_VOL = 2000;
+export const MAX_VOL = 55;
 export const RATE_STOPLOST = process.env.RATE_STOPLOST || 0.8 // 80%
 export const HOUR_PROFIT = process.env.HOUR_PROFIT || 24 // check profit if open position on 24h
